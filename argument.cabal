@@ -1,0 +1,16 @@
+name: argument
+version: 0.1
+cabal-version: >= 1.2
+build-type: Simple
+
+library
+    build-depends:
+        base >= 4,
+        pretty >= 1.0.1,
+        mtl >= 1.1
+    hs-source-dirs: src
+    exposed-modules:
+        System.Console.Argument,
+        System.Console.Argument.Types,
+        System.Console.Argument.Parse,
+        System.Console.Argument.Help

@@ -1,0 +1,6 @@
+sort of todo: things to think about
+
+ [ ] more smart argument names declaration, than plain ["-f", "--foo"]
+ [ ] ([String] -> IO (Either ParseError (a, [String])) <- extensive checks, like isFile
+ [ ] repetitive flags, ie Many :: Flag a -> Flag [a]
+ [ ] mandatory metavars
