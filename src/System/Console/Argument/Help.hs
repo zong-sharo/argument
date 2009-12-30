@@ -24,7 +24,7 @@ argInfo (Ap a b)            = argInfo a ++ argInfo b
 argInfo (Pure _)            = []
 argInfo (Help text a )      = map (\info -> info {helpText = Just text}) (argInfo a)
 argInfo (Metavar metavar a) = map (\info -> info {metavar = Just metavar}) (argInfo a)
-argInfo (Fallback value a)  = map (\info -> info {status = WithDefault $ show value}) (argInfo a)
+argInfo (Default value a)   = map (\info -> info {status = WithDefault $ show value}) (argInfo a)
 argInfo (Optional a)        = map (\info -> info {status = IsOptional}) (argInfo a)
 
 infoPretty :: ArgumentInfo -> Doc

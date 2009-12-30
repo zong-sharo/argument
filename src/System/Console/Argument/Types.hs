@@ -1,30 +1,23 @@
 {-# LANGUAGE GADTs #-}
 module System.Console.Argument.Types
-    ( ParseError(..)
+    ( Parser
     , Argument(..)
     ) where
 import Control.Applicative
 import Control.Monad.Error
 
-data ParseError
-    = Recoverable String
-    | Unrecoverable String
-    deriving Show
-
-instance Error ParseError where
-    noMsg = Recoverable ""
-    strMsg = Recoverable
+type Parser a = String -> Either String a
 
 data Argument a where
-    Argument :: [String] -> ([String] -> Either ParseError (a, [String])) -> Argument a
+    Argument :: [String] -> Parser a -> Argument a
     Flag     :: [String] -> Argument Bool
+    Optional :: Argument a -> Argument (Maybe a)
     Map      :: (a -> b) -> Argument a -> Argument b
     Ap       :: Argument (a -> b) -> Argument a -> Argument b
     Pure     :: a -> Argument a
     Help     :: String -> Argument a -> Argument a
     Metavar  :: String -> Argument a -> Argument a
-    Fallback :: Show a => a -> Argument a -> Argument a
-    Optional :: Argument a -> Argument (Maybe a)
+    Default  :: Show a => a -> Argument a -> Argument a
 
 instance Functor Argument where
     fmap = Map

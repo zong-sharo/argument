@@ -1,36 +1,46 @@
 module System.Console.Argument.Parse
-    ( parseArgs
-    , guard'
-    , consumeOne
+    ( ArgumentError(..)
+    , parseArgs
+    , argument
+    , option
+    , flag
+    , (<?>)
+    , (<<)
+    , (=:)
     , satisfy
     , string
     , natural
     , integer
-    , flag
-    , option
-    , (<?>)
-    , (<<)
-    , (=:)
     ) where
 import System.Console.Argument.Types
 import Control.Monad.Error
 import Data.Char (isDigit)
 
 
-parseArgs :: Argument a -> [String] -> Either ParseError (a, [String])
+data ArgumentError
+    = RequiredArgumentError [String]
+    | ValueParseError [String] String
+    | UnknownArgument String
+    deriving Show
+
+instance Error ArgumentError where
+    noMsg = RequiredArgumentError []
+    strMsg = RequiredArgumentError . (:[])
+
+parseArgs :: Argument a -> [String] -> Either ArgumentError (a, [String])
 parseArgs (Argument names parse) xs =
     case break (`elem` names) xs of
-         (ys, flag:zs) -> do
-             (value, zs') <- parse zs
-             return (value, ys ++ zs')
-         otherwise     -> throwError $ Recoverable $ show (head names) ++ "is required argument"
+         (ys, name:z:zs) -> case parse z of
+                                 Left msg    -> Left $ ValueParseError names msg
+                                 Right value -> Right (value, ys ++ zs)
+         otherwise       -> throwError $ RequiredArgumentError names
 parseArgs (Flag names) xs =
     case break (`elem` names) xs of
-         (ys, flag:zs) -> return (True, ys ++ zs)
+         (ys, name:zs) -> return (True, ys ++ zs)
          otherwise     -> return (False, xs)
 
-parseArgs (Map op flag) xs = do
-    (value, xs') <- parseArgs flag xs
+parseArgs (Map op arg) xs = do
+    (value, xs') <- parseArgs arg xs
     return $ (op value, xs')
 
 parseArgs (Ap a b) xs = do
@@ -38,47 +48,32 @@ parseArgs (Ap a b) xs = do
     parseArgs (Map op b) xs'
 
 parseArgs (Pure a) xs = return (a, xs)
-parseArgs (Help _ flag) xs = parseArgs flag xs
-parseArgs (Metavar _ flag) xs = parseArgs flag xs
-parseArgs (Fallback fallback flag) xs =
-    catchError (parseArgs flag xs) (\err ->
+parseArgs (Help _ arg) xs = parseArgs arg xs
+parseArgs (Metavar _ arg) xs = parseArgs arg xs
+parseArgs (Default value arg) xs =
+    catchError (parseArgs arg xs) (\err ->
         case err of
-             Recoverable _ -> return (fallback, xs)
-             otherwise     -> throwError err)
-parseArgs (Optional flag) xs =
+             RequiredArgumentError _ -> return (value, xs)
+             otherwise               -> throwError err)
+parseArgs (Optional arg) xs =
     catchError (do
-        (value, xs') <- parseArgs flag xs
+        (value, xs') <- parseArgs arg xs
         return (Just value, xs')) (\err ->
             case err of
-                 Recoverable _ -> return (Nothing, xs)
-                 otherwise     -> throwError err)
+                 RequiredArgumentError _ -> return (Nothing, xs)
+                 otherwise               -> throwError err)
 
-guard' :: Bool -> ParseError -> Either ParseError ()
-guard' True err = return ()
-guard' False err = throwError err
+satisfy :: (String -> Bool) -> String -> Either String String
+satisfy predicate value | predicate value = Right value
+                        | otherwise       = Left value
 
-consumeOne :: [String] -> (String -> Either ParseError a) -> Argument a
-consumeOne names parse = Argument names (\xs -> do
-    guard' (not (null xs || null (head xs))) (Unrecoverable $ show (head names) ++ "is required argument")
-    value <- parse (head xs)
-    return (value, tail xs))
+-- | required argument, fails if argument is not present
+argument :: [String] -> Parser a -> Argument a
+argument = Argument
 
-satisfy :: [String] -> (String -> Bool) -> Argument String
-satisfy names criterion = consumeOne names (\value -> do
-    guard' (criterion value) (Unrecoverable $ show value ++ "is not a proper value for the " ++ show (head names))
-    return value)
-
--- | string argument
-string :: [String] -> Argument String
-string names = consumeOne names return
-
--- | positive integer argument
-natural :: [String] -> Argument Integer
-natural names = read `fmap` satisfy names (all isDigit)
-
--- | integer argument
-integer :: [String] -> Argument Integer
-integer names = read `fmap` satisfy names (\(x:xs) -> x == '-' || isDigit x && all isDigit xs)
+-- | optional argument, returns nothing if parser fails
+option :: [String] -> Parser a -> Argument (Maybe a)
+option names parser = Optional $ Argument names parser
 
 -- | flag, default value is @False@
 flag :: [String] -> Argument Bool
@@ -92,13 +87,21 @@ infixl 9 <?>
 infixl 9 <<
 -- | add default value for the argument. if argument fails, default value is returned
 (<<) :: Show a => Argument a -> a -> Argument a
-(<<) = flip Fallback
+(<<) = flip Default
 
 infixl 9 =:
 -- | add metavar annotation
 (=:) :: Argument a -> String -> Argument a
 (=:) = flip Metavar
 
--- | makes argument optional.
-option :: Argument a -> Argument (Maybe a)
-option = Optional
+-- | string parser, consumes any string
+string :: Parser String
+string = return
+
+-- | positive integer parser
+natural :: Parser Integer
+natural = (fmap . fmap) read (satisfy (all isDigit))
+
+-- | integer parser
+integer :: Parser Integer
+integer = (fmap . fmap) read (satisfy (\(x:xs) -> x == '-' || isDigit x && all isDigit xs))
